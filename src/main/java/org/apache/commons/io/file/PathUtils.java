@@ -199,9 +199,7 @@ public final class PathUtils {
                     }
                 }
             }
-            // relativeDirList1 = tmpRelativeDirList1;
-            // relativeDirList2 = tmpRelativeDirList2;
-            relativeFileList1 = tmpRelativeFileList1;
+                                    relativeFileList1 = tmpRelativeFileList1;
             relativeFileList2 = tmpRelativeFileList2;
         }
     }
@@ -2090,3 +2088,4 @@ public final class PathUtils {
         // do not instantiate.
     }
 }
+
