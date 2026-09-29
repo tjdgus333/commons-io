@@ -142,8 +142,7 @@ public class UnsynchronizedBufferedReader extends UnsynchronizedReader {
      * @return The number of bytes read into the buffer, or -1 if the end of the source stream has been reached.
      */
     private int fillBuf() throws IOException {
-        // assert(pos == end);
-        if (mark == EOF || bufPos - mark >= markLimit) {
+                if (mark == EOF || bufPos - mark >= markLimit) {
             /* mark isn't set or has exceeded its limit. use the whole buffer */
             final int result = in.read(buf, 0, buf.length);
             if (result > 0) {
@@ -522,3 +521,4 @@ public class UnsynchronizedBufferedReader extends UnsynchronizedReader {
     }
 
 }
+
