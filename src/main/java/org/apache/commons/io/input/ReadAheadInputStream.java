@@ -16,7 +16,6 @@ package org.apache.commons.io.input;
 
 import static org.apache.commons.io.IOUtils.EOF;
 
-// import javax.annotation.concurrent.GuardedBy;
 import java.io.EOFException;
 import java.io.FilterInputStream;
 import java.io.IOException;
@@ -569,3 +568,4 @@ public class ReadAheadInputStream extends FilterInputStream {
         checkReadException();
     }
 }
+
