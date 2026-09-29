@@ -198,11 +198,11 @@ public enum FileSystem {
         };
 
         /**
-         * Gets the measured length in this strategyâ€™s unit.
+         * Gets the measured length in this strategy¡¯s unit.
          *
          * @param value The value to measure, not null.
          * @param charset The charset to use when measuring in bytes.
-         * @return The length in this strategyâ€™s unit.
+         * @return The length in this strategy¡¯s unit.
          */
         abstract int getLength(CharSequence value, Charset charset);
 
@@ -219,7 +219,7 @@ public enum FileSystem {
         }
 
         /**
-         * Truncates to {@code limit} in this strategyâ€™s unit (no-op if already within limit).
+         * Truncates to {@code limit} in this strategy¡¯s unit (no-op if already within limit).
          *
          * @param value The value to truncate, not null.
          * @param limit The limit to truncate to.
@@ -446,8 +446,7 @@ public enum FileSystem {
         this.maxPathLength = maxPathLength;
         this.illegalFileNameChars = Objects.requireNonNull(illegalFileNameChars, "illegalFileNameChars");
         this.reservedFileNames = Objects.requireNonNull(reservedFileNames, "reservedFileNames");
-        //Arrays.sort(this.reservedFileNames);
-        this.reservedFileNamesExtensions = reservedFileNamesExtensions;
+                this.reservedFileNamesExtensions = reservedFileNamesExtensions;
         this.caseSensitive = caseSensitive;
         this.casePreserving = casePreserving;
         this.supportsDriveLetter = supportsDriveLetter;
@@ -734,3 +733,4 @@ public enum FileSystem {
     }
 
 }
+
