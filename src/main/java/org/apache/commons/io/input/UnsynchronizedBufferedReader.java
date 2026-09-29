@@ -332,12 +332,7 @@ public class UnsynchronizedBufferedReader extends UnsynchronizedReader {
             if (outstanding == 0 || outstanding < length && !in.ready()) {
                 break;
             }
-            // assert(pos == end);
-            /*
-             * If we're unmarked and the requested size is greater than our buffer, read the bytes directly into the caller's buffer. We don't read into smaller
-             * buffers because that could result in a many reads.
-             */
-            if ((mark == -1 || bufPos - mark >= markLimit) && outstanding >= buf.length) {
+                                    if ((mark == -1 || bufPos - mark >= markLimit) && outstanding >= buf.length) {
                 final int count = in.read(buffer, offset, outstanding);
                 if (count > 0) {
                     outstanding -= count;
