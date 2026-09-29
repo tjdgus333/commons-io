@@ -186,8 +186,7 @@ public final class ThrottledInputStream extends CountingInputStream {
         public void setMaxBytesPerSecond(final long maxBytesPerSecond) {
             setMaxBytesPerSecond((double) maxBytesPerSecond);
             // TODO 3.0
-            // return asThis();
-        }
+                    }
 
     }
 
@@ -301,3 +300,4 @@ public final class ThrottledInputStream extends CountingInputStream {
                 + ", totalSleepDuration=" + totalSleepDuration + ']';
     }
 }
+
