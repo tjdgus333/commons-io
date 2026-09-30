@@ -775,42 +775,44 @@ public final class PathUtils {
      * @throws IOException Thrown if an I/O error is thrown by a visitor method.
      */
     public static boolean directoryAndFileContentEquals(final Path path1, final Path path2, final LinkOption[] linkOptions, final OpenOption[] openOptions,
-            final FileVisitOption[] fileVisitOption) throws IOException {
-        // First walk both file trees and gather normalized paths.
-        if (path1 == null && path2 == null) {
-            return true;
-        }
-        if (path1 == null || path2 == null) {
-            return false;
-        }
-        if (notExists(path1) && notExists(path2)) {
-            return true;
-        }
-        final RelativeSortedPaths relativeSortedPaths = new RelativeSortedPaths(path1, path2, Integer.MAX_VALUE, linkOptions, fileVisitOption);
-        // If the normalized path names and counts are not the same, no need to compare contents.
-        if (!relativeSortedPaths.equals) {
-            return false;
-        }
-        // Both visitors contain the same normalized paths, we can compare file contents.
-        final List<Path> fileList1 = relativeSortedPaths.relativeFileList1;
-        final List<Path> fileList2 = relativeSortedPaths.relativeFileList2;
-        final boolean sameFileSystem = isSameFileSystem(path1, path2);
-        for (final Path path : fileList1) {
-            final int binarySearch = sameFileSystem ? Collections.binarySearch(fileList2, path)
-                    : Collections.binarySearch(fileList2, path,
-                            Comparator.comparing(p -> RelativeSortedPaths.extractKey(p.getFileSystem().getSeparator(), p.toString())));
-            if (binarySearch < 0) {
-                throw new IllegalStateException("Unexpected mismatch.");
-            }
-            if (sameFileSystem && !fileContentEquals(path1.resolve(path), path2.resolve(path), linkOptions, openOptions)) {
-                return false;
-            }
-            if (!fileContentEquals(path1.resolve(path.toString()), path2.resolve(path.toString()), linkOptions, openOptions)) {
-                return false;
-            }
-        }
+        final FileVisitOption[] fileVisitOption) throws IOException {
+    // First walk both file trees and gather normalized paths.
+    if (path1 == null && path2 == null) {
         return true;
     }
+    if (path1 == null || path2 == null) {
+        return false;
+    }
+    if (notExists(path1) && notExists(path2)) {
+        return true;
+    }
+    final RelativeSortedPaths relativeSortedPaths = new RelativeSortedPaths(path1, path2, Integer.MAX_VALUE, linkOptions, fileVisitOption);
+    // If the normalized path names and counts are not the same, no need to compare contents.
+    if (!relativeSortedPaths.equals) {
+        return false;
+    }
+    // Both visitors contain the same normalized paths, we can compare file contents.
+    final List<Path> fileList1 = relativeSortedPaths.relativeFileList1;
+    final List<Path> fileList2 = relativeSortedPaths.relativeFileList2;
+    final boolean sameFileSystem = isSameFileSystem(path1, path2);
+    final Comparator<Path> relativePathComparator = Comparator.comparing(
+            path -> RelativeSortedPaths.extractKey(path.getFileSystem().getSeparator(), path.toString()));
+    for (final Path path : fileList1) {
+        final int binarySearch = sameFileSystem
+                ? Collections.binarySearch(fileList2, path)
+                : Collections.binarySearch(fileList2, path, relativePathComparator);
+        if (binarySearch < 0) {
+            throw new IllegalStateException("Unexpected mismatch.");
+        }
+        if (sameFileSystem && !fileContentEquals(path1.resolve(path), path2.resolve(path), linkOptions, openOptions)) {
+            return false;
+        }
+        if (!fileContentEquals(path1.resolve(path.toString()), path2.resolve(path.toString()), linkOptions, openOptions)) {
+            return false;
+        }
+    }
+    return true;
+}
 
     /**
      * Compares the file sets of two Paths to determine if they are equal or not without considering file contents. The comparison includes all files in all

@@ -163,14 +163,14 @@ public class FileSystemUtils {
      * @throws IllegalArgumentException if the path is invalid.
      */
     static long getFreeSpace(final String pathStr) throws IOException {
-        final Path path = Paths.get(Objects.requireNonNull(pathStr, "pathStr"));
-        if (Files.exists(path)) {
-            // Need an absolute path for input like "" to work
-            return Files.getFileStore(path.toAbsolutePath()).getUsableSpace();
-            // return path.toAbsolutePath().toFile().getUsableSpace();
-        }
+    final Path path = Paths.get(Objects.requireNonNull(pathStr, "pathStr"));
+    if (!Files.exists(path)) {
         throw new IllegalArgumentException(path.toString());
     }
+    // Need an absolute path for input like "" to work
+    return Files.getFileStore(path.toAbsolutePath()).getUsableSpace();
+    // return path.toAbsolutePath().toFile().getUsableSpace();
+}
 
     /**
      * Instances should NOT be constructed in standard programming.

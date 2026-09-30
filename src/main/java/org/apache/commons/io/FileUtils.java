@@ -1197,37 +1197,37 @@ public class FileUtils {
      * {@code null}.
      */
     static String decodeUrl(final String url) {
-        String decoded = url;
-        if (url != null && url.indexOf('%') >= 0) {
-            final int n = url.length();
-            final StringBuilder builder = new StringBuilder();
-            final ByteBuffer byteBuffer = ByteBuffer.allocate(n);
-            for (int i = 0; i < n; ) {
-                if (url.charAt(i) == '%') {
-                    try {
-                        do {
-                            final byte octet = (byte) Integer.parseInt(url.substring(i + 1, i + 3), 16);
-                            byteBuffer.put(octet);
-                            i += 3;
-                        } while (i < n && url.charAt(i) == '%');
-                        continue;
-                    } catch (final IndexOutOfBoundsException | NumberFormatException ignored) {
-                        // malformed percent-encoded octet, fall through and
-                        // append characters literally
-                    } finally {
-                        if (byteBuffer.position() > 0) {
-                            byteBuffer.flip();
-                            builder.append(StandardCharsets.UTF_8.decode(byteBuffer).toString());
-                            byteBuffer.clear();
-                        }
-                    }
-                }
-                builder.append(url.charAt(i++));
-            }
-            decoded = builder.toString();
-        }
-        return decoded;
+    if (url == null || url.indexOf('%') < 0) {
+        return url;
     }
+
+    final int n = url.length();
+    final StringBuilder builder = new StringBuilder();
+    final ByteBuffer byteBuffer = ByteBuffer.allocate(n);
+    for (int i = 0; i < n; ) {
+        if (url.charAt(i) == '%') {
+            try {
+                do {
+                    final byte octet = (byte) Integer.parseInt(url.substring(i + 1, i + 3), 16);
+                    byteBuffer.put(octet);
+                    i += 3;
+                } while (i < n && url.charAt(i) == '%');
+                continue;
+            } catch (final IndexOutOfBoundsException | NumberFormatException ignored) {
+                // malformed percent-encoded octet, fall through and
+                // append characters literally
+            } finally {
+                if (byteBuffer.position() > 0) {
+                    byteBuffer.flip();
+                    builder.append(StandardCharsets.UTF_8.decode(byteBuffer).toString());
+                    byteBuffer.clear();
+                }
+            }
+        }
+        builder.append(url.charAt(i++));
+    }
+    return builder.toString();
+}
 
     /**
      * Deletes the given File but throws an IOException if it cannot, unlike {@link File#delete()} which returns a

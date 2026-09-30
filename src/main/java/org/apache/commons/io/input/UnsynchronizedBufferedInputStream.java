@@ -306,72 +306,70 @@ public final class UnsynchronizedBufferedInputStream extends UnsynchronizedFilte
      */
     @Override
     public int read(final byte[] dest, int offset, final int length) throws IOException {
-        IOUtils.checkFromIndexSize(dest, offset, length);
-        if (length == 0) {
-            return 0;
-        }
-        // Use local ref since buf may be invalidated by an unsynchronized
-        // close()
-        byte[] localBuf = buffer;
-        if (localBuf == null) {
-            throw new IOException("Stream is closed");
-        }
-        final InputStream localIn = inputStream;
-        if (localIn == null) {
-            throw new IOException("Stream is closed");
-        }
-
-        int required;
-        if (pos < count) {
-            /* There are bytes available in the buffer. */
-            final int copylength = count - pos >= length ? length : count - pos;
-            System.arraycopy(localBuf, pos, dest, offset, copylength);
-            pos += copylength;
-            if (copylength == length || localIn.available() == 0) {
-                return copylength;
-            }
-            offset += copylength;
-            required = length - copylength;
-        } else {
-            required = length;
-        }
-
-        while (true) {
-            final int read;
-            /*
-             * If we're not marked and the required size is greater than the buffer, simply read the bytes directly bypassing the buffer.
-             */
-            if (markPos == IOUtils.EOF && required >= localBuf.length) {
-                read = localIn.read(dest, offset, required);
-                if (read == IOUtils.EOF) {
-                    return required == length ? IOUtils.EOF : length - required;
-                }
-            } else {
-                if (fillBuffer(localIn, localBuf) == IOUtils.EOF) {
-                    return required == length ? IOUtils.EOF : length - required;
-                }
-                // localBuf may have been invalidated by fillBuffer()
-                if (localBuf != buffer) {
-                    localBuf = buffer;
-                    if (localBuf == null) {
-                        throw new IOException("Stream is closed");
-                    }
-                }
-
-                read = count - pos >= required ? required : count - pos;
-                System.arraycopy(localBuf, pos, dest, offset, read);
-                pos += read;
-            }
-            required -= read;
-            if (required == 0) {
-                return length;
-            }
-            if (localIn.available() == 0) {
-                return length - required;
-            }
-            offset += read;
-        }
+    IOUtils.checkFromIndexSize(dest, offset, length);
+    if (length == 0) {
+        return 0;
     }
+    // Use local ref since buf may be invalidated by an unsynchronized
+    // close()
+    byte[] localBuf = buffer;
+    if (localBuf == null) {
+        throw new IOException("Stream is closed");
+    }
+    final InputStream localIn = inputStream;
+    if (localIn == null) {
+        throw new IOException("Stream is closed");
+    }
+
+    int remaining = length;
+    if (pos < count) {
+        /* There are bytes available in the buffer. */
+        final int copyLength = count - pos >= length ? length : count - pos;
+        System.arraycopy(localBuf, pos, dest, offset, copyLength);
+        pos += copyLength;
+        if (copyLength == length || localIn.available() == 0) {
+            return copyLength;
+        }
+        offset += copyLength;
+        remaining -= copyLength;
+    }
+
+    while (true) {
+        final int read;
+        /*
+         * If we're not marked and the remaining size is greater than the buffer, simply read the bytes directly bypassing the buffer.
+         */
+        if (markPos == IOUtils.EOF && remaining >= localBuf.length) {
+            read = localIn.read(dest, offset, remaining);
+            if (read == IOUtils.EOF) {
+                return remaining == length ? IOUtils.EOF : length - remaining;
+            }
+        } else {
+            if (fillBuffer(localIn, localBuf) == IOUtils.EOF) {
+                return remaining == length ? IOUtils.EOF : length - remaining;
+            }
+            // localBuf may have been invalidated by fillBuffer()
+            if (localBuf != buffer) {
+                localBuf = buffer;
+                if (localBuf == null) {
+                    throw new IOException("Stream is closed");
+                }
+            }
+
+            read = count - pos >= remaining ? remaining : count - pos;
+            System.arraycopy(localBuf, pos, dest, offset, read);
+            pos += read;
+        }
+        remaining -= read;
+        if (remaining == 0) {
+            return length;
+        }
+        if (localIn.available() == 0) {
+            return length - remaining;
+        }
+        offset += read;
+    }
+}
 
     /**
      * Resets this stream to the last marked location.

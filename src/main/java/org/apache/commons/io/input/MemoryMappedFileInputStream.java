@@ -188,9 +188,9 @@ public final class MemoryMappedFileInputStream extends AbstractInputStream {
 
     @Override
     public int available() throws IOException {
-        //return buffer != null ? buffer.remaining(): 0;
-        return buffer.remaining();
-    }
+    //return buffer != null ? buffer.remaining(): 0;
+    return buffer.remaining();
+}
 
     private void cleanBuffer() {
         ByteBufferCleaner.clean(buffer, clean);

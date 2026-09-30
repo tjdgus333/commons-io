@@ -286,13 +286,13 @@ public class CharSequenceInputStream extends InputStream {
      */
     @Override
     public synchronized void mark(final int readLimit) {
-        this.cBufMark = this.cBuf.position();
-        this.bBufMark = this.bBuf.position();
-        this.cBuf.mark();
-        this.bBuf.mark();
-        // It would be nice to be able to use mark & reset on the cBuf and bBuf;
-        // however the bBuf is re-used so that won't work
-    }
+    this.cBufMark = this.cBuf.position();
+    this.bBufMark = this.bBuf.position();
+    this.cBuf.mark();
+    this.bBuf.mark();
+    // It would be nice to be able to use mark & reset on the cBuf and bBuf;
+    // however the bBuf is re-used so that won't work
+}
 
     @Override
     public boolean markSupported() {

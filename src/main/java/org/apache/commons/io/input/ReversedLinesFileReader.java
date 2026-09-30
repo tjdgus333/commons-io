@@ -205,76 +205,71 @@ public class ReversedLinesFileReader implements Closeable, IOIterable<String> {
          * @return The line or null.
          */
         private String readLine() { //NOPMD Bug in PMD
+    String line = null;
+    final boolean isLastFilePart = partNumber == 1;
+    int i = currentLastBytePos;
 
-            String line = null;
-            int newLineMatchByteCount;
+    if (i == -1 && isLastFilePart && leftOver != null) {
+        line = new String(leftOver, charset);
+        leftOver = null;
+        return line;
+    }
 
-            final boolean isLastFilePart = partNumber == 1;
-
-            int i = currentLastBytePos;
-
-            if (i == -1 && isLastFilePart && leftOver != null) {
-                line = new String(leftOver, charset);
-                leftOver = null;
-                return line;
-            }
-
-            while (i > -1) {
-
-                if (!isLastFilePart && i < avoidNewlineSplitBufferSize) {
-                    // avoidNewlineSplitBuffer: for all except the last file part we
-                    // take a few bytes to the next file part to avoid splitting of newlines
-                    createLeftOver();
-                    break; // skip last few bytes and leave it to the next file part
-                }
-
-                // check for newline
-                if ((newLineMatchByteCount = getNewLineMatchByteCount(data, i)) > 0 /* found newline */) {
-                    final int lineStart = i + 1;
-                    final int lineLengthBytes = currentLastBytePos - lineStart + 1;
-
-                    if (lineLengthBytes < 0) {
-                        throw new IllegalStateException("Unexpected negative line length=" + lineLengthBytes);
-                    }
-                    final byte[] lineData = Arrays.copyOfRange(data, lineStart, lineStart + lineLengthBytes);
-
-                    line = new String(lineData, charset);
-
-                    currentLastBytePos = i - newLineMatchByteCount;
-
-                    if (isLastFilePart && currentLastBytePos == -1 && i == 0) {
-                        leftOver = new byte[0];
-                    }
-                    break; // found line
-                }
-
-                // move cursor
-                i -= byteDecrement;
-
-                // end of file part handling
-                if (i < 0) {
-                    if (isLastFilePart) {
-                        final int lineLengthBytes = currentLastBytePos + 1;
-                        if (lineLengthBytes > 0) {
-                            final byte[] lineData = Arrays.copyOf(data, lineLengthBytes);
-                            line = new String(lineData, charset);
-                        }
-                        currentLastBytePos = -1;
-                    } else {
-                        createLeftOver();
-                    }
-                    break; // end of file part
-                }
-            }
-
-            // there will be partNumber line break anymore, this is the first line of the file
-            if (line == null && isLastFilePart && leftOver != null) {
-                line = new String(leftOver, charset);
-                leftOver = null;
-            }
-
-            return line;
+    while (i > -1) {
+        if (!isLastFilePart && i < avoidNewlineSplitBufferSize) {
+            // avoidNewlineSplitBuffer: for all except the last file part we
+            // take a few bytes to the next file part to avoid splitting of newlines
+            createLeftOver();
+            break; // skip last few bytes and leave it to the next file part
         }
+
+        // check for newline
+        final int newLineMatchByteCount = getNewLineMatchByteCount(data, i);
+        if (newLineMatchByteCount > 0 /* found newline */) {
+            final int lineStart = i + 1;
+            final int lineLengthBytes = currentLastBytePos - lineStart + 1;
+
+            if (lineLengthBytes < 0) {
+                throw new IllegalStateException("Unexpected negative line length=" + lineLengthBytes);
+            }
+
+            final byte[] lineData = Arrays.copyOfRange(data, lineStart, lineStart + lineLengthBytes);
+            line = new String(lineData, charset);
+            currentLastBytePos = i - newLineMatchByteCount;
+
+            if (isLastFilePart && currentLastBytePos == -1 && i == 0) {
+                leftOver = new byte[0];
+            }
+            break; // found line
+        }
+
+        // move cursor
+        i -= byteDecrement;
+
+        // end of file part handling
+        if (i < 0) {
+            if (isLastFilePart) {
+                final int lineLengthBytes = currentLastBytePos + 1;
+                if (lineLengthBytes > 0) {
+                    final byte[] lineData = Arrays.copyOf(data, lineLengthBytes);
+                    line = new String(lineData, charset);
+                }
+                currentLastBytePos = -1;
+            } else {
+                createLeftOver();
+            }
+            break; // end of file part
+        }
+    }
+
+    // there will be no line break anymore; this is the first line of the file
+    if (line == null && isLastFilePart && leftOver != null) {
+        line = new String(leftOver, charset);
+        leftOver = null;
+    }
+
+    return line;
+}
 
         /**
          * Handles block rollover

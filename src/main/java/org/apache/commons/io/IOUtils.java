@@ -1264,48 +1264,46 @@ public class IOUtils {
      * @since 1.1
      */
     public static boolean contentEquals(final Reader input1, final Reader input2) throws IOException {
-        if (input1 == input2) {
-            return true;
-        }
-        if (input1 == null || input2 == null) {
-            return false;
-        }
-        try (ScratchChars scratch = IOUtils.ScratchChars.get()) {
-            final char[] array1 = scratch.array();
-            final char[] array2 = charArray();
-            int pos1;
-            int pos2;
-            int count1;
-            int count2;
-            while (true) {
-                pos1 = 0;
-                pos2 = 0;
-                for (int index = 0; index < DEFAULT_BUFFER_SIZE; index++) {
-                    if (pos1 == index) {
-                        do {
-                            count1 = input1.read(array1, pos1, DEFAULT_BUFFER_SIZE - pos1);
-                        } while (count1 == 0);
-                        if (count1 == EOF) {
-                            return pos2 == index && input2.read() == EOF;
-                        }
-                        pos1 += count1;
+    if (input1 == input2) {
+        return true;
+    }
+    if (input1 == null || input2 == null) {
+        return false;
+    }
+    try (ScratchChars scratch = IOUtils.ScratchChars.get()) {
+        final char[] buffer1 = scratch.array();
+        final char[] buffer2 = charArray();
+        while (true) {
+            int position1 = 0;
+            int position2 = 0;
+            for (int index = 0; index < DEFAULT_BUFFER_SIZE; index++) {
+                if (position1 == index) {
+                    int count1;
+                    do {
+                        count1 = input1.read(buffer1, position1, DEFAULT_BUFFER_SIZE - position1);
+                    } while (count1 == 0);
+                    if (count1 == EOF) {
+                        return position2 == index && input2.read() == EOF;
                     }
-                    if (pos2 == index) {
-                        do {
-                            count2 = input2.read(array2, pos2, DEFAULT_BUFFER_SIZE - pos2);
-                        } while (count2 == 0);
-                        if (count2 == EOF) {
-                            return pos1 == index && input1.read() == EOF;
-                        }
-                        pos2 += count2;
+                    position1 += count1;
+                }
+                if (position2 == index) {
+                    int count2;
+                    do {
+                        count2 = input2.read(buffer2, position2, DEFAULT_BUFFER_SIZE - position2);
+                    } while (count2 == 0);
+                    if (count2 == EOF) {
+                        return position1 == index && input1.read() == EOF;
                     }
-                    if (array1[index] != array2[index]) {
-                        return false;
-                    }
+                    position2 += count2;
+                }
+                if (buffer1[index] != buffer2[index]) {
+                    return false;
                 }
             }
         }
     }
+}
 
     // TODO Consider making public
     private static boolean contentEquals(final Stream<?> stream1, final Stream<?> stream2) {

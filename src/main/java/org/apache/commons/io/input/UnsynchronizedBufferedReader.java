@@ -159,9 +159,9 @@ public class UnsynchronizedBufferedReader extends UnsynchronizedReader {
             if (newLength > markLimit) {
                 newLength = markLimit;
             }
-            final char[] newbuf = new char[newLength];
-            System.arraycopy(buf, 0, newbuf, 0, buf.length);
-            buf = newbuf;
+            final char[] newBuffer = new char[newLength];
+            System.arraycopy(buf, 0, newBuffer, 0, buf.length);
+            buf = newBuffer;
         } else if (mark > 0) {
             /* make room by shifting the buffered data to left mark positions */
             System.arraycopy(buf, mark, buf, 0, buf.length - mark);
@@ -303,57 +303,64 @@ public class UnsynchronizedBufferedReader extends UnsynchronizedReader {
      */
     @Override
     public int read(final char[] buffer, int offset, final int length) throws IOException {
-        /*
-         * First throw on a closed reader, then check the parameters.
-         *
-         * This behavior is not specified in the Javadoc, but is followed by most readers in java.io.
-         */
-        checkOpen();
-        IOUtils.checkFromIndexSize(buffer, offset, length);
-        if (length == 0) {
-            return 0;
-        }
-        int outstanding = length;
-        while (outstanding > 0) {
-            /*
-             * If there are bytes in the buffer, grab those first.
-             */
-            final int available = end - bufPos;
-            if (available > 0) {
-                final int count = available >= outstanding ? outstanding : available;
-                System.arraycopy(buf, bufPos, buffer, offset, count);
-                bufPos += count;
-                offset += count;
-                outstanding -= count;
-            }
-            /*
-             * Before attempting to read from the underlying stream, make sure we really, really want to. We won't bother if we're done, or if we've already got
-             * some bytes and reading from the underlying stream would block.
-             */
-            if (outstanding == 0 || outstanding < length && !in.ready()) {
-                break;
-            }
-            // assert(pos == end);
-            /*
-             * If we're unmarked and the requested size is greater than our buffer, read the bytes directly into the caller's buffer. We don't read into smaller
-             * buffers because that could result in a many reads.
-             */
-            if ((mark == -1 || bufPos - mark >= markLimit) && outstanding >= buf.length) {
-                final int count = in.read(buffer, offset, outstanding);
-                if (count > 0) {
-                    outstanding -= count;
-                    mark = -1;
-                }
-                break; // assume the source stream gave us all that it could
-            }
-            if (fillBuf() == EOF) {
-                break; // source is exhausted
-            }
-        }
-        final int count = length - outstanding;
-        incPos(count);
-        return count > 0 || count == length ? count : EOF;
+    /*
+     * First throw on a closed reader, then check the parameters.
+     *
+     * This behavior is not specified in the Javadoc, but is followed by most readers in java.io.
+     */
+    checkOpen();
+    IOUtils.checkFromIndexSize(buffer, offset, length);
+    if (length == 0) {
+        return 0;
     }
+
+    int outstanding = length;
+    while (outstanding > 0) {
+        /*
+         * If there are bytes in the buffer, grab those first.
+         */
+        final int available = end - bufPos;
+        if (available > 0) {
+            final int count = Math.min(available, outstanding);
+            System.arraycopy(buf, bufPos, buffer, offset, count);
+            bufPos += count;
+            offset += count;
+            outstanding -= count;
+        }
+
+        /*
+         * Before attempting to read from the underlying stream, make sure we really, really want to. We won't bother if we're done, or if we've already got
+         * some bytes and reading from the underlying stream would block.
+         */
+        if (outstanding == 0 || (outstanding < length && !in.ready())) {
+            break;
+        }
+
+        // assert(pos == end);
+        /*
+         * If we're unmarked and the requested size is greater than our buffer, read the bytes directly into the caller's buffer. We don't read into smaller
+         * buffers because that could result in a many reads.
+         */
+        final boolean canReadDirectly = (mark == -1 || bufPos - mark >= markLimit)
+                && outstanding >= buf.length;
+        if (canReadDirectly) {
+            final int count = in.read(buffer, offset, outstanding);
+            if (count > 0) {
+                outstanding -= count;
+                mark = -1;
+            }
+            break; // assume the source stream gave us all that it could
+        }
+
+        if (fillBuf() == EOF) {
+            break; // source is exhausted
+        }
+    }
+
+    final int count = length - outstanding;
+    incPos(count);
+    return count > 0 ? count : EOF;
+}
 
     /**
      * Returns the next line of text available from this reader. A line is represented by zero or more characters followed by {@code LF}, {@code CR},
@@ -363,75 +370,68 @@ public class UnsynchronizedBufferedReader extends UnsynchronizedReader {
      * @throws IOException Thrown if this reader is closed or some other I/O error occurs.
      */
     public String readLine() throws IOException {
-        checkOpen();
-        /* has the underlying stream been exhausted? */
-        if (bufPos == end && fillBuf() == EOF) {
-            return null;
+    checkOpen();
+    /* has the underlying stream been exhausted? */
+    if (bufPos == end && fillBuf() == EOF) {
+        return null;
+    }
+    final int startPos = bufPos;
+    for (int charPos = bufPos; charPos < end; charPos++) {
+        final char ch = buf[charPos];
+        if (ch > CR) {
+            continue;
         }
-        final int startPos = bufPos;
-        for (int charPos = bufPos; charPos < end; charPos++) {
-            final char ch = buf[charPos];
-            if (ch > CR) {
-                continue;
-            }
-            if (ch == LF) {
-                final String res = new String(buf, bufPos, charPos - bufPos);
-                bufPos = charPos + 1;
-                incPos(bufPos - startPos);
-                return res;
-            }
-            if (ch == CR) {
-                final String res = new String(buf, bufPos, charPos - bufPos);
-                bufPos = charPos + 1;
-                if ((bufPos < end || fillBuf() != EOF) && buf[bufPos] == LF) {
-                    bufPos++;
-                }
-                incPos(bufPos - startPos);
-                return res;
-            }
+        if (ch == LF) {
+            final String res = new String(buf, bufPos, charPos - bufPos);
+            bufPos = charPos + 1;
+            incPos(bufPos - startPos);
+            return res;
         }
-        char eol = NUL;
-        // Typical Line Length
-        final StringBuilder result = new StringBuilder(80);
-        result.append(buf, bufPos, end - bufPos);
-        while (true) {
-            bufPos = end;
-            /* Are there buffered characters available? */
-            if (eol == LF) {
-                return result.toString();
+        if (ch == CR) {
+            final String res = new String(buf, bufPos, charPos - bufPos);
+            bufPos = charPos + 1;
+            if ((bufPos < end || fillBuf() != EOF) && buf[bufPos] == LF) {
+                bufPos++;
             }
-            // attempt to fill buffer
-            if (fillBuf() == EOF) {
-                // characters or null.
-                return result.length() > 0 || eol != NUL ? result.toString() : null;
-            }
-            for (int charPos = bufPos; charPos < end; charPos++) {
-                final char c = buf[charPos];
-                if (eol != NUL) {
-                    if (eol == CR && c == LF) {
-                        if (charPos > bufPos) {
-                            result.append(buf, bufPos, charPos - bufPos - 1);
-                        }
-                        bufPos = charPos + 1;
-                    } else {
-                        if (charPos > bufPos) {
-                            result.append(buf, bufPos, charPos - bufPos - 1);
-                        }
-                        bufPos = charPos;
-                    }
-                    return result.toString();
-                }
-                if (c == LF || c == CR) {
-                    eol = c;
-                }
-            }
-            if (eol == NUL) {
-                result.append(buf, bufPos, end - bufPos);
-            } else {
-                result.append(buf, bufPos, end - bufPos - 1);
-            }
+            incPos(bufPos - startPos);
+            return res;
         }
     }
+    char eol = NUL;
+    // Typical Line Length
+    final StringBuilder result = new StringBuilder(80);
+    result.append(buf, bufPos, end - bufPos);
+    while (true) {
+        bufPos = end;
+        /* Are there buffered characters available? */
+        if (eol == LF) {
+            return result.toString();
+        }
+        // attempt to fill buffer
+        if (fillBuf() == EOF) {
+            // characters or null.
+            return result.length() > 0 || eol != NUL ? result.toString() : null;
+        }
+        for (int charPos = bufPos; charPos < end; charPos++) {
+            final char c = buf[charPos];
+            if (eol != NUL) {
+                if (charPos > bufPos) {
+                    result.append(buf, bufPos, charPos - bufPos - 1);
+                }
+                bufPos = eol == CR && c == LF ? charPos + 1 : charPos;
+                return result.toString();
+            }
+            if (c == LF || c == CR) {
+                eol = c;
+            }
+        }
+        if (eol == NUL) {
+            result.append(buf, bufPos, end - bufPos);
+        } else {
+            result.append(buf, bufPos, end - bufPos - 1);
+        }
+    }
+}
 
     /**
      * Tests whether this reader is ready to be read without blocking.

@@ -92,33 +92,36 @@ public enum RandomAccessFileMode {
      * @since 2.18.0
      */
     public static RandomAccessFileMode valueOf(final OpenOption... openOption) {
-        RandomAccessFileMode bestFit = READ_ONLY;
-        for (final OpenOption option : openOption) {
-            if (option instanceof StandardOpenOption) {
-                switch ((StandardOpenOption) option) {
-                case WRITE:
-                    if (!bestFit.implies(READ_WRITE)) {
-                        bestFit = READ_WRITE;
-                    }
-                    break;
-                case DSYNC:
-                    if (!bestFit.implies(READ_WRITE_SYNC_CONTENT)) {
-                        bestFit = READ_WRITE_SYNC_CONTENT;
-                    }
-                    break;
-                case SYNC:
-                    if (!bestFit.implies(READ_WRITE_SYNC_ALL)) {
-                        bestFit = READ_WRITE_SYNC_ALL;
-                    }
-                    break;
-                default:
-                    // explicit case skip (spotbugs)
-                    continue;
-                }
-            }
+    RandomAccessFileMode bestFit = READ_ONLY;
+    for (final OpenOption option : openOption) {
+        if (!(option instanceof StandardOpenOption)) {
+            continue;
         }
-        return bestFit;
+
+        final StandardOpenOption standardOption = (StandardOpenOption) option;
+        switch (standardOption) {
+        case WRITE:
+            if (!bestFit.implies(READ_WRITE)) {
+                bestFit = READ_WRITE;
+            }
+            break;
+        case DSYNC:
+            if (!bestFit.implies(READ_WRITE_SYNC_CONTENT)) {
+                bestFit = READ_WRITE_SYNC_CONTENT;
+            }
+            break;
+        case SYNC:
+            if (!bestFit.implies(READ_WRITE_SYNC_ALL)) {
+                bestFit = READ_WRITE_SYNC_ALL;
+            }
+            break;
+        default:
+            // explicit case skip (spotbugs)
+            continue;
+        }
     }
+    return bestFit;
+}
 
     /**
      * Gets the {@link RandomAccessFileMode} value for the given mode, one of {@value #R}, {@value #RW}, {@value #RWD}, or {@value #RWS}.

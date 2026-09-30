@@ -640,30 +640,30 @@ public abstract class DirectoryWalker<T> {
      * @throws IOException Thrown if an I/O Error occurs.
      */
     private void walk(final File directory, final int depth, final Collection<T> results) throws IOException {
-        checkIfCancelled(directory, depth, results);
-        if (handleDirectory(directory, depth, results)) {
-            handleDirectoryStart(directory, depth, results);
-            final int childDepth = depth + 1;
-            if (depthLimit < 0 || childDepth <= depthLimit) {
-                checkIfCancelled(directory, depth, results);
-                File[] childFiles = directory.listFiles(filter);
-                childFiles = filterDirectoryContents(directory, depth, childFiles);
-                if (childFiles == null) {
-                    handleRestricted(directory, childDepth, results);
-                } else {
-                    for (final File childFile : childFiles) {
-                        if (childFile.isDirectory()) {
-                            walk(childFile, childDepth, results);
-                        } else {
-                            checkIfCancelled(childFile, childDepth, results);
-                            handleFile(childFile, childDepth, results);
-                            checkIfCancelled(childFile, childDepth, results);
-                        }
+    checkIfCancelled(directory, depth, results);
+    if (handleDirectory(directory, depth, results)) {
+        handleDirectoryStart(directory, depth, results);
+        final int childDepth = depth + 1;
+        final boolean isWithinDepthLimit = depthLimit < 0 || childDepth <= depthLimit;
+        if (isWithinDepthLimit) {
+            checkIfCancelled(directory, depth, results);
+            final File[] childFiles = filterDirectoryContents(directory, depth, directory.listFiles(filter));
+            if (childFiles == null) {
+                handleRestricted(directory, childDepth, results);
+            } else {
+                for (final File childFile : childFiles) {
+                    if (childFile.isDirectory()) {
+                        walk(childFile, childDepth, results);
+                    } else {
+                        checkIfCancelled(childFile, childDepth, results);
+                        handleFile(childFile, childDepth, results);
+                        checkIfCancelled(childFile, childDepth, results);
                     }
                 }
             }
-            handleDirectoryEnd(directory, depth, results);
         }
-        checkIfCancelled(directory, depth, results);
+        handleDirectoryEnd(directory, depth, results);
     }
+    checkIfCancelled(directory, depth, results);
+}
 }
