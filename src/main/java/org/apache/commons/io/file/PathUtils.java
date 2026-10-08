@@ -167,43 +167,56 @@ public final class PathUtils {
          * @throws IOException Thrown if an I/O error is thrown by a visitor method.
          */
         private RelativeSortedPaths(final Path dir1, final Path dir2, final int maxDepth, final LinkOption[] linkOptions,
-                final FileVisitOption[] fileVisitOptions) throws IOException {
-            final List<Path> tmpRelativeDirList1;
-            final List<Path> tmpRelativeDirList2;
-            List<Path> tmpRelativeFileList1 = null;
-            List<Path> tmpRelativeFileList2 = null;
-            if (dir1 == null && dir2 == null) {
-                equals = true;
-            } else if (dir1 == null ^ dir2 == null) {
-                equals = false;
-            } else {
-                final boolean parentDirNotExists1 = Files.notExists(dir1, linkOptions);
-                final boolean parentDirNotExists2 = Files.notExists(dir2, linkOptions);
-                if (parentDirNotExists1 || parentDirNotExists2) {
-                    equals = parentDirNotExists1 && parentDirNotExists2;
-                } else {
-                    final AccumulatorPathVisitor visitor1 = accumulate(dir1, maxDepth, fileVisitOptions);
-                    final AccumulatorPathVisitor visitor2 = accumulate(dir2, maxDepth, fileVisitOptions);
-                    if (visitor1.getDirList().size() != visitor2.getDirList().size() || visitor1.getFileList().size() != visitor2.getFileList().size()) {
-                        equals = false;
-                    } else {
-                        tmpRelativeDirList1 = visitor1.relativizeDirectories(dir1, true, null);
-                        tmpRelativeDirList2 = visitor2.relativizeDirectories(dir2, true, null);
-                        if (!equalsIgnoreFileSystem(tmpRelativeDirList1, tmpRelativeDirList2)) {
-                            equals = false;
-                        } else {
-                            tmpRelativeFileList1 = visitor1.relativizeFiles(dir1, true, null);
-                            tmpRelativeFileList2 = visitor2.relativizeFiles(dir2, true, null);
-                            equals = equalsIgnoreFileSystem(tmpRelativeFileList1, tmpRelativeFileList2);
-                        }
-                    }
-                }
-            }
-            // relativeDirList1 = tmpRelativeDirList1;
-            // relativeDirList2 = tmpRelativeDirList2;
-            relativeFileList1 = tmpRelativeFileList1;
-            relativeFileList2 = tmpRelativeFileList2;
-        }
+        final FileVisitOption[] fileVisitOptions) throws IOException {
+    if (dir1 == null && dir2 == null) {
+        equals = true;
+        relativeFileList1 = null;
+        relativeFileList2 = null;
+        return;
+    }
+    if (dir1 == null || dir2 == null) {
+        equals = false;
+        relativeFileList1 = null;
+        relativeFileList2 = null;
+        return;
+    }
+
+    final boolean parentDirNotExists1 = Files.notExists(dir1, linkOptions);
+    final boolean parentDirNotExists2 = Files.notExists(dir2, linkOptions);
+    if (parentDirNotExists1 || parentDirNotExists2) {
+        equals = parentDirNotExists1 && parentDirNotExists2;
+        relativeFileList1 = null;
+        relativeFileList2 = null;
+        return;
+    }
+
+    final AccumulatorPathVisitor visitor1 = accumulate(dir1, maxDepth, fileVisitOptions);
+    final AccumulatorPathVisitor visitor2 = accumulate(dir2, maxDepth, fileVisitOptions);
+    if (visitor1.getDirList().size() != visitor2.getDirList().size()
+            || visitor1.getFileList().size() != visitor2.getFileList().size()) {
+        equals = false;
+        relativeFileList1 = null;
+        relativeFileList2 = null;
+        return;
+    }
+
+    final List<Path> tmpRelativeDirList1 = visitor1.relativizeDirectories(dir1, true, null);
+    final List<Path> tmpRelativeDirList2 = visitor2.relativizeDirectories(dir2, true, null);
+    if (!equalsIgnoreFileSystem(tmpRelativeDirList1, tmpRelativeDirList2)) {
+        equals = false;
+        relativeFileList1 = null;
+        relativeFileList2 = null;
+        return;
+    }
+
+    final List<Path> tmpRelativeFileList1 = visitor1.relativizeFiles(dir1, true, null);
+    final List<Path> tmpRelativeFileList2 = visitor2.relativizeFiles(dir2, true, null);
+    equals = equalsIgnoreFileSystem(tmpRelativeFileList1, tmpRelativeFileList2);
+    // relativeDirList1 = tmpRelativeDirList1;
+    // relativeDirList2 = tmpRelativeDirList2;
+    relativeFileList1 = tmpRelativeFileList1;
+    relativeFileList2 = tmpRelativeFileList2;
+}
     }
 
     private static final OpenOption[] OPEN_OPTIONS_TRUNCATE = { StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING };
@@ -775,42 +788,40 @@ public final class PathUtils {
      * @throws IOException Thrown if an I/O error is thrown by a visitor method.
      */
     public static boolean directoryAndFileContentEquals(final Path path1, final Path path2, final LinkOption[] linkOptions, final OpenOption[] openOptions,
-            final FileVisitOption[] fileVisitOption) throws IOException {
-        // First walk both file trees and gather normalized paths.
-        if (path1 == null && path2 == null) {
-            return true;
-        }
-        if (path1 == null || path2 == null) {
-            return false;
-        }
-        if (notExists(path1) && notExists(path2)) {
-            return true;
-        }
-        final RelativeSortedPaths relativeSortedPaths = new RelativeSortedPaths(path1, path2, Integer.MAX_VALUE, linkOptions, fileVisitOption);
-        // If the normalized path names and counts are not the same, no need to compare contents.
-        if (!relativeSortedPaths.equals) {
-            return false;
-        }
-        // Both visitors contain the same normalized paths, we can compare file contents.
-        final List<Path> fileList1 = relativeSortedPaths.relativeFileList1;
-        final List<Path> fileList2 = relativeSortedPaths.relativeFileList2;
-        final boolean sameFileSystem = isSameFileSystem(path1, path2);
-        for (final Path path : fileList1) {
-            final int binarySearch = sameFileSystem ? Collections.binarySearch(fileList2, path)
-                    : Collections.binarySearch(fileList2, path,
-                            Comparator.comparing(p -> RelativeSortedPaths.extractKey(p.getFileSystem().getSeparator(), p.toString())));
-            if (binarySearch < 0) {
-                throw new IllegalStateException("Unexpected mismatch.");
-            }
-            if (sameFileSystem && !fileContentEquals(path1.resolve(path), path2.resolve(path), linkOptions, openOptions)) {
-                return false;
-            }
-            if (!fileContentEquals(path1.resolve(path.toString()), path2.resolve(path.toString()), linkOptions, openOptions)) {
-                return false;
-            }
-        }
+        final FileVisitOption[] fileVisitOption) throws IOException {
+    // First walk both file trees and gather normalized paths.
+    if (path1 == null && path2 == null) {
         return true;
     }
+    if (path1 == null || path2 == null) {
+        return false;
+    }
+    if (notExists(path1) && notExists(path2)) {
+        return true;
+    }
+    final RelativeSortedPaths relativeSortedPaths = new RelativeSortedPaths(path1, path2, Integer.MAX_VALUE, linkOptions, fileVisitOption);
+    // If the normalized path names and counts are not the same, no need to compare contents.
+    if (!relativeSortedPaths.equals) {
+        return false;
+    }
+    // Both visitors contain the same normalized paths, we can compare file contents.
+    final List<Path> fileList1 = relativeSortedPaths.relativeFileList1;
+    final List<Path> fileList2 = relativeSortedPaths.relativeFileList2;
+    final boolean sameFileSystem = isSameFileSystem(path1, path2);
+    final Comparator<Path> comparator = sameFileSystem ? null
+            : Comparator.comparing(p -> RelativeSortedPaths.extractKey(p.getFileSystem().getSeparator(), p.toString()));
+    for (final Path path : fileList1) {
+        final int binarySearch = Collections.binarySearch(fileList2, path, comparator);
+        if (binarySearch < 0) {
+            throw new IllegalStateException("Unexpected mismatch.");
+        }
+        if (sameFileSystem && !fileContentEquals(path1.resolve(path), path2.resolve(path), linkOptions, openOptions)
+                || !fileContentEquals(path1.resolve(path.toString()), path2.resolve(path.toString()), linkOptions, openOptions)) {
+            return false;
+        }
+    }
+    return true;
+}
 
     /**
      * Compares the file sets of two Paths to determine if they are equal or not without considering file contents. The comparison includes all files in all

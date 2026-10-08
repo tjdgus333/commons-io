@@ -306,72 +306,85 @@ public final class UnsynchronizedBufferedInputStream extends UnsynchronizedFilte
      */
     @Override
     public int read(final byte[] dest, int offset, final int length) throws IOException {
-        IOUtils.checkFromIndexSize(dest, offset, length);
-        if (length == 0) {
-            return 0;
+    IOUtils.checkFromIndexSize(dest, offset, length);
+    if (length == 0) {
+        return 0;
+    }
+    // Use local ref since buf may be invalidated by an unsynchronized
+    // close()
+    final byte[] localBuf = buffer;
+    if (localBuf == null) {
+        throw new IOException("Stream is closed");
+    }
+    final InputStream localIn = inputStream;
+    if (localIn == null) {
+        throw new IOException("Stream is closed");
+    }
+
+    int required;
+    if (pos < count) {
+        /* There are bytes available in the buffer. */
+        final int copylength = count - pos >= length ? length : count - pos;
+        System.arraycopy(localBuf, pos, dest, offset, copylength);
+        pos += copylength;
+        if (copylength == length || localIn.available() == 0) {
+            return copylength;
         }
-        // Use local ref since buf may be invalidated by an unsynchronized
-        // close()
-        byte[] localBuf = buffer;
-        if (localBuf == null) {
-            throw new IOException("Stream is closed");
-        }
-        final InputStream localIn = inputStream;
-        if (localIn == null) {
-            throw new IOException("Stream is closed");
+        offset += copylength;
+        required = length - copylength;
+    } else {
+        required = length;
+    }
+
+    final class BufferReader {
+        private byte[] currentBuffer;
+
+        private BufferReader(final byte[] currentBuffer) {
+            this.currentBuffer = currentBuffer;
         }
 
-        int required;
-        if (pos < count) {
-            /* There are bytes available in the buffer. */
-            final int copylength = count - pos >= length ? length : count - pos;
-            System.arraycopy(localBuf, pos, dest, offset, copylength);
-            pos += copylength;
-            if (copylength == length || localIn.available() == 0) {
-                return copylength;
-            }
-            offset += copylength;
-            required = length - copylength;
-        } else {
-            required = length;
-        }
-
-        while (true) {
-            final int read;
+        private int read(final int destinationOffset, final int requiredLength) throws IOException {
             /*
              * If we're not marked and the required size is greater than the buffer, simply read the bytes directly bypassing the buffer.
              */
-            if (markPos == IOUtils.EOF && required >= localBuf.length) {
-                read = localIn.read(dest, offset, required);
-                if (read == IOUtils.EOF) {
-                    return required == length ? IOUtils.EOF : length - required;
+            if (markPos == IOUtils.EOF && requiredLength >= currentBuffer.length) {
+                return localIn.read(dest, destinationOffset, requiredLength);
+            }
+            if (fillBuffer(localIn, currentBuffer) == IOUtils.EOF) {
+                return IOUtils.EOF;
+            }
+            // currentBuffer may have been invalidated by fillBuffer()
+            if (currentBuffer != buffer) {
+                currentBuffer = buffer;
+                if (currentBuffer == null) {
+                    throw new IOException("Stream is closed");
                 }
-            } else {
-                if (fillBuffer(localIn, localBuf) == IOUtils.EOF) {
-                    return required == length ? IOUtils.EOF : length - required;
-                }
-                // localBuf may have been invalidated by fillBuffer()
-                if (localBuf != buffer) {
-                    localBuf = buffer;
-                    if (localBuf == null) {
-                        throw new IOException("Stream is closed");
-                    }
-                }
+            }
 
-                read = count - pos >= required ? required : count - pos;
-                System.arraycopy(localBuf, pos, dest, offset, read);
-                pos += read;
-            }
-            required -= read;
-            if (required == 0) {
-                return length;
-            }
-            if (localIn.available() == 0) {
-                return length - required;
-            }
-            offset += read;
+            final int read = Math.min(requiredLength, count - pos);
+            System.arraycopy(currentBuffer, pos, dest, destinationOffset, read);
+            pos += read;
+            return read;
         }
     }
+
+    final BufferReader bufferReader = new BufferReader(localBuf);
+    boolean eof = false;
+    do {
+        final int read = bufferReader.read(offset, required);
+        if (read == IOUtils.EOF) {
+            eof = true;
+            break;
+        }
+        required -= read;
+        offset += read;
+    } while (required != 0 && localIn.available() != 0);
+
+    if (eof && required == length) {
+        return IOUtils.EOF;
+    }
+    return length - required;
+}
 
     /**
      * Resets this stream to the last marked location.

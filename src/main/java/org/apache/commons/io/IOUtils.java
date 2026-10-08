@@ -1270,38 +1270,42 @@ public class IOUtils {
         if (input1 == null || input2 == null) {
             return false;
         }
+        class BufferReader {
+            int readIfNeeded(final Reader input, final char[] array, final int position, final int index) throws IOException {
+                if (position != index) {
+                    return 0;
+                }
+                int count;
+                do {
+                    count = input.read(array, position, DEFAULT_BUFFER_SIZE - position);
+                } while (count == 0);
+                return count;
+            }
+        }
         try (ScratchChars scratch = IOUtils.ScratchChars.get()) {
             final char[] array1 = scratch.array();
             final char[] array2 = charArray();
-            int pos1;
-            int pos2;
-            int count1;
-            int count2;
-            while (true) {
-                pos1 = 0;
-                pos2 = 0;
-                for (int index = 0; index < DEFAULT_BUFFER_SIZE; index++) {
-                    if (pos1 == index) {
-                        do {
-                            count1 = input1.read(array1, pos1, DEFAULT_BUFFER_SIZE - pos1);
-                        } while (count1 == 0);
-                        if (count1 == EOF) {
-                            return pos2 == index && input2.read() == EOF;
-                        }
-                        pos1 += count1;
-                    }
-                    if (pos2 == index) {
-                        do {
-                            count2 = input2.read(array2, pos2, DEFAULT_BUFFER_SIZE - pos2);
-                        } while (count2 == 0);
-                        if (count2 == EOF) {
-                            return pos1 == index && input1.read() == EOF;
-                        }
-                        pos2 += count2;
-                    }
-                    if (array1[index] != array2[index]) {
-                        return false;
-                    }
+            final BufferReader bufferReader = new BufferReader();
+            int pos1 = 0;
+            int pos2 = 0;
+            for (int index = 0; ; index++) {
+                if (index == DEFAULT_BUFFER_SIZE) {
+                    index = 0;
+                    pos1 = 0;
+                    pos2 = 0;
+                }
+                final int count1 = bufferReader.readIfNeeded(input1, array1, pos1, index);
+                if (count1 == EOF) {
+                    return pos2 == index && input2.read() == EOF;
+                }
+                pos1 += count1;
+                final int count2 = bufferReader.readIfNeeded(input2, array2, pos2, index);
+                if (count2 == EOF) {
+                    return pos1 == index && input1.read() == EOF;
+                }
+                pos2 += count2;
+                if (array1[index] != array2[index]) {
+                    return false;
                 }
             }
         }

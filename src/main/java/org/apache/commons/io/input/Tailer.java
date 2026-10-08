@@ -935,127 +935,135 @@ public class Tailer implements Runnable, AutoCloseable {
      * @throws IOException Thrown if an I/O error occurs.
      */
     private long readLines(final RandomAccessResourceBridge reader) throws IOException {
-        try (ByteArrayOutputStream lineBuf = new ByteArrayOutputStream(64)) {
-            long pos = reader.getPointer();
-            long rePos = pos; // position to re-read
-            int num;
-            boolean seenCR = false;
-            while (getRun() && (num = reader.read(inbuf)) != EOF) {
-                for (int i = 0; i < num; i++) {
-                    final byte ch = inbuf[i];
-                    switch (ch) {
-                    case LF:
-                        seenCR = false; // swallow CR before LF
-                        listener.handle(new String(lineBuf.toByteArray(), charset));
-                        lineBuf.reset();
-                        rePos = pos + i + 1;
-                        break;
-                    case CR:
-                        if (seenCR) {
-                            lineBuf.write(CR);
-                        }
-                        seenCR = true;
-                        break;
-                    default:
-                        if (seenCR) {
-                            seenCR = false; // swallow final CR
-                            listener.handle(new String(lineBuf.toByteArray(), charset));
-                            lineBuf.reset();
-                            rePos = pos + i + 1;
-                        }
-                        lineBuf.write(ch);
-                    }
+    try (ByteArrayOutputStream lineBuf = new ByteArrayOutputStream(64)) {
+        long pos = reader.getPointer();
+        long rePos = pos; // position to re-read
+        int num;
+        boolean seenCR = false;
+        while (getRun() && (num = reader.read(inbuf)) != EOF) {
+            for (int i = 0; i < num; i++) {
+                final byte ch = inbuf[i];
+                if (ch == LF) {
+                    seenCR = false; // swallow CR before LF
+                    listener.handle(new String(lineBuf.toByteArray(), charset));
+                    lineBuf.reset();
+                    rePos = pos + i + 1;
+                    continue;
                 }
-                pos = reader.getPointer();
+                if (ch == CR) {
+                    if (seenCR) {
+                        lineBuf.write(CR);
+                    }
+                    seenCR = true;
+                    continue;
+                }
+                if (seenCR) {
+                    seenCR = false; // swallow final CR
+                    listener.handle(new String(lineBuf.toByteArray(), charset));
+                    lineBuf.reset();
+                    rePos = pos + i + 1;
+                }
+                lineBuf.write(ch);
             }
-
-            reader.seek(rePos); // Ensure we can re-read if necessary
-
-            if (listener instanceof TailerListenerAdapter) {
-                ((TailerListenerAdapter) listener).endOfFileReached();
-            }
-
-            return rePos;
+            pos = reader.getPointer();
         }
+
+        reader.seek(rePos); // Ensure we can re-read if necessary
+
+        if (listener instanceof TailerListenerAdapter) {
+            ((TailerListenerAdapter) listener).endOfFileReached();
+        }
+
+        return rePos;
     }
+}
 
     /**
      * Follows changes in the file, calling {@link TailerListener#handle(String)} with each new line.
      */
     @Override
     public void run() {
-        RandomAccessResourceBridge reader = null;
-        try {
-            FileTime last = FileTimes.EPOCH; // The last time the file was checked for changes
-            long position = 0; // position within the file
-            // Open the file
-            while (getRun() && reader == null) {
-                try {
-                    reader = tailable.getRandomAccess(RAF_READ_ONLY_MODE);
-                } catch (final FileNotFoundException e) {
-                    listener.fileNotFound();
-                }
-                if (reader == null) {
-                    ThreadUtils.sleep(delayDuration);
-                } else {
-                    // The current position in the file
+        class RunState {
+            private RandomAccessResourceBridge reader;
+            private FileTime last = FileTimes.EPOCH;
+            private long position;
+
+            private void open() throws IOException, InterruptedException {
+                while (getRun() && reader == null) {
+                    try {
+                        reader = tailable.getRandomAccess(RAF_READ_ONLY_MODE);
+                    } catch (final FileNotFoundException e) {
+                        listener.fileNotFound();
+                    }
+                    if (reader == null) {
+                        ThreadUtils.sleep(delayDuration);
+                        continue;
+                    }
                     position = tailFromEnd ? tailable.size() : 0;
                     last = tailable.lastModifiedFileTime();
                     reader.seek(position);
                 }
             }
-            while (getRun()) {
-                final boolean newer = tailable.isNewer(last); // IO-279, must be done first
-                // Check the file length to see if it was rotated
-                final long length = tailable.size();
-                if (length < position) {
-                    // File was rotated
-                    listener.fileRotated();
-                    // Reopen the reader after rotation ensuring that the old file is closed iff we re-open it
-                    // successfully
-                    try (RandomAccessResourceBridge save = reader) {
-                        reader = tailable.getRandomAccess(RAF_READ_ONLY_MODE);
-                        // At this point, we're sure that the old file is rotated
-                        // Finish scanning the old file and then we'll start with the new one
-                        try {
-                            readLines(save);
-                        } catch (final IOException ioe) {
-                            listener.handle(ioe);
-                        }
-                        position = 0;
-                    } catch (final FileNotFoundException e) {
-                        // in this case we continue to use the previous reader and position values
-                        listener.fileNotFound();
-                        ThreadUtils.sleep(delayDuration);
-                    }
-                    continue;
+
+            private boolean rotateIfNeeded(final long length) throws IOException, InterruptedException {
+                if (length >= position) {
+                    return false;
                 }
-                // File was not rotated
-                // See if the file needs to be read again
+
+                // File was rotated
+                listener.fileRotated();
+                // Reopen the reader after rotation ensuring that the old file is closed iff we re-open it
+                // successfully
+                try (RandomAccessResourceBridge save = reader) {
+                    reader = tailable.getRandomAccess(RAF_READ_ONLY_MODE);
+                    // At this point, we're sure that the old file is rotated
+                    // Finish scanning the old file and then we'll start with the new one
+                    try {
+                        readLines(save);
+                    } catch (final IOException ioe) {
+                        listener.handle(ioe);
+                    }
+                    position = 0;
+                } catch (final FileNotFoundException e) {
+                    // in this case we continue to use the previous reader and position values
+                    listener.fileNotFound();
+                    ThreadUtils.sleep(delayDuration);
+                }
+                return true;
+            }
+
+            private void readIfNeeded(final long length, final boolean newer) throws IOException {
                 if (length > position) {
                     // The file has more content than it did last time
                     position = readLines(reader);
                     last = tailable.lastModifiedFileTime();
-                } else if (newer) {
-                    /*
-                     * This can happen if the file
-                     * - is overwritten with the exact same length of information
-                     * - gets "touched"
-                     * - Files.getLastModifiedTime returns a new timestamp but newer data is not yet there (
-                     *   was reported to happen on busy systems or samba network shares, see IO-279)
-                     * The default behavior is to replay the whole file. If this is undesired in your usecase,
-                     * use the ignoreTouch builder flag
-                     */
-                    if (!ignoreTouch) {
-                        position = 0;
-                        reader.seek(position); // cannot be null here
-
-                        // Now we can read new lines
-                        position = readLines(reader);
-                    }
-                    // we eitherway continue with the new timestamp
-                    last = tailable.lastModifiedFileTime();
+                    return;
                 }
+                if (!newer) {
+                    return;
+                }
+
+                /*
+                 * This can happen if the file
+                 * - is overwritten with the exact same length of information
+                 * - gets "touched"
+                 * - Files.getLastModifiedTime returns a new timestamp but newer data is not yet there (
+                 *   was reported to happen on busy systems or samba network shares, see IO-279)
+                 * The default behavior is to replay the whole file. If this is undesired in your usecase,
+                 * use the ignoreTouch builder flag
+                 */
+                if (!ignoreTouch) {
+                    position = 0;
+                    reader.seek(position); // cannot be null here
+
+                    // Now we can read new lines
+                    position = readLines(reader);
+                }
+                // we eitherway continue with the new timestamp
+                last = tailable.lastModifiedFileTime();
+            }
+
+            private void pauseAndReopen() throws IOException, InterruptedException {
                 if (reOpen && reader != null) {
                     reader.close();
                 }
@@ -1065,6 +1073,27 @@ public class Tailer implements Runnable, AutoCloseable {
                     reader.seek(position);
                 }
             }
+
+            private void tail() throws IOException, InterruptedException {
+                while (getRun()) {
+                    final boolean newer = tailable.isNewer(last); // IO-279, must be done first
+                    // Check the file length to see if it was rotated
+                    final long length = tailable.size();
+                    if (rotateIfNeeded(length)) {
+                        continue;
+                    }
+                    // File was not rotated
+                    // See if the file needs to be read again
+                    readIfNeeded(length, newer);
+                    pauseAndReopen();
+                }
+            }
+        }
+
+        final RunState state = new RunState();
+        try {
+            state.open();
+            state.tail();
         } catch (final InterruptedException e) {
             Thread.currentThread().interrupt();
             listener.handle(e);
@@ -1072,7 +1101,7 @@ public class Tailer implements Runnable, AutoCloseable {
             listener.handle(e);
         } finally {
             try {
-                IOUtils.close(reader);
+                IOUtils.close(state.reader);
             } catch (final IOException e) {
                 listener.handle(e);
             }

@@ -290,8 +290,6 @@ public class CharSequenceInputStream extends InputStream {
         this.bBufMark = this.bBuf.position();
         this.cBuf.mark();
         this.bBuf.mark();
-        // It would be nice to be able to use mark & reset on the cBuf and bBuf;
-        // however the bBuf is re-used so that won't work
     }
 
     @Override

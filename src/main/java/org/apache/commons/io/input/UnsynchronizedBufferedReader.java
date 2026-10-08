@@ -314,25 +314,20 @@ public class UnsynchronizedBufferedReader extends UnsynchronizedReader {
             return 0;
         }
         int outstanding = length;
-        while (outstanding > 0) {
-            /*
-             * If there are bytes in the buffer, grab those first.
-             */
-            final int available = end - bufPos;
-            if (available > 0) {
-                final int count = available >= outstanding ? outstanding : available;
-                System.arraycopy(buf, bufPos, buffer, offset, count);
-                bufPos += count;
-                offset += count;
-                outstanding -= count;
-            }
-            /*
-             * Before attempting to read from the underlying stream, make sure we really, really want to. We won't bother if we're done, or if we've already got
-             * some bytes and reading from the underlying stream would block.
-             */
-            if (outstanding == 0 || outstanding < length && !in.ready()) {
-                break;
-            }
+        /*
+         * If there are bytes in the buffer, grab those first.
+         */
+        int bufferedCount = Math.min(end - bufPos, outstanding);
+        System.arraycopy(buf, bufPos, buffer, offset, bufferedCount);
+        bufPos += bufferedCount;
+        offset += bufferedCount;
+        outstanding -= bufferedCount;
+
+        /*
+         * Before attempting to read from the underlying stream, make sure we really, really want to. We won't bother if we're done, or if we've already got
+         * some bytes and reading from the underlying stream would block.
+         */
+        while (outstanding > 0 && (outstanding == length || in.ready())) {
             // assert(pos == end);
             /*
              * If we're unmarked and the requested size is greater than our buffer, read the bytes directly into the caller's buffer. We don't read into smaller
@@ -349,6 +344,11 @@ public class UnsynchronizedBufferedReader extends UnsynchronizedReader {
             if (fillBuf() == EOF) {
                 break; // source is exhausted
             }
+            bufferedCount = Math.min(end - bufPos, outstanding);
+            System.arraycopy(buf, bufPos, buffer, offset, bufferedCount);
+            bufPos += bufferedCount;
+            offset += bufferedCount;
+            outstanding -= bufferedCount;
         }
         final int count = length - outstanding;
         incPos(count);
@@ -363,73 +363,65 @@ public class UnsynchronizedBufferedReader extends UnsynchronizedReader {
      * @throws IOException Thrown if this reader is closed or some other I/O error occurs.
      */
     public String readLine() throws IOException {
+        final class LineReader {
+            private int findEndOfLine() {
+                for (int charPos = bufPos; charPos < end; charPos++) {
+                    final char ch = buf[charPos];
+                    if (ch == LF || ch == CR) {
+                        return charPos;
+                    }
+                }
+                return end;
+            }
+
+            private void skipLineFeed(final char eol) throws IOException {
+                if (eol == CR && (bufPos < end || fillBuf() != EOF) && buf[bufPos] == LF) {
+                    bufPos++;
+                }
+            }
+        }
+
         checkOpen();
         /* has the underlying stream been exhausted? */
         if (bufPos == end && fillBuf() == EOF) {
             return null;
         }
+
         final int startPos = bufPos;
-        for (int charPos = bufPos; charPos < end; charPos++) {
-            final char ch = buf[charPos];
-            if (ch > CR) {
-                continue;
-            }
-            if (ch == LF) {
-                final String res = new String(buf, bufPos, charPos - bufPos);
-                bufPos = charPos + 1;
-                incPos(bufPos - startPos);
-                return res;
-            }
-            if (ch == CR) {
-                final String res = new String(buf, bufPos, charPos - bufPos);
-                bufPos = charPos + 1;
-                if ((bufPos < end || fillBuf() != EOF) && buf[bufPos] == LF) {
-                    bufPos++;
-                }
-                incPos(bufPos - startPos);
-                return res;
-            }
+        final LineReader lineReader = new LineReader();
+        int charPos = lineReader.findEndOfLine();
+        if (charPos < end) {
+            final String res = new String(buf, bufPos, charPos - bufPos);
+            final char eol = buf[charPos];
+            bufPos = charPos + 1;
+            lineReader.skipLineFeed(eol);
+            incPos(bufPos - startPos);
+            return res;
         }
-        char eol = NUL;
+
         // Typical Line Length
         final StringBuilder result = new StringBuilder(80);
         result.append(buf, bufPos, end - bufPos);
         while (true) {
             bufPos = end;
             /* Are there buffered characters available? */
-            if (eol == LF) {
-                return result.toString();
-            }
             // attempt to fill buffer
             if (fillBuf() == EOF) {
                 // characters or null.
-                return result.length() > 0 || eol != NUL ? result.toString() : null;
+                return result.length() > 0 ? result.toString() : null;
             }
-            for (int charPos = bufPos; charPos < end; charPos++) {
-                final char c = buf[charPos];
-                if (eol != NUL) {
-                    if (eol == CR && c == LF) {
-                        if (charPos > bufPos) {
-                            result.append(buf, bufPos, charPos - bufPos - 1);
-                        }
-                        bufPos = charPos + 1;
-                    } else {
-                        if (charPos > bufPos) {
-                            result.append(buf, bufPos, charPos - bufPos - 1);
-                        }
-                        bufPos = charPos;
-                    }
-                    return result.toString();
-                }
-                if (c == LF || c == CR) {
-                    eol = c;
-                }
-            }
-            if (eol == NUL) {
+
+            charPos = lineReader.findEndOfLine();
+            if (charPos == end) {
                 result.append(buf, bufPos, end - bufPos);
-            } else {
-                result.append(buf, bufPos, end - bufPos - 1);
+                continue;
             }
+
+            result.append(buf, bufPos, charPos - bufPos);
+            final char eol = buf[charPos];
+            bufPos = charPos + 1;
+            lineReader.skipLineFeed(eol);
+            return result.toString();
         }
     }
 

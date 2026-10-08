@@ -102,53 +102,49 @@ public class HexDump {
      * @since 2.12.0
      */
     public static void dump(final byte[] data, final long offset,
-                            final Appendable appendable, final int index,
-                            final int length)
-            throws IOException, ArrayIndexOutOfBoundsException {
-        Objects.requireNonNull(appendable, "appendable");
-        if (index < 0 || index >= data.length) {
-            throw new ArrayIndexOutOfBoundsException(
-                    "illegal index: " + index + " into array of length "
-                    + data.length);
-        }
-        long display_offset = offset + index;
-        final StringBuilder buffer = new StringBuilder(74);
-
-        // TODO Use Objects.checkFromIndexSize(index, length, data.length) when upgrading to JDK9
-        if (length < 0 || index + length > data.length) {
-            throw new ArrayIndexOutOfBoundsException(String.format("Range [%s, %<s + %s) out of bounds for length %s", index, length, data.length));
-        }
-
-        final int endIndex = index + length;
-
-        for (int j = index; j < endIndex; j += 16) {
-            int chars_read = endIndex - j;
-
-            if (chars_read > 16) {
-                chars_read = 16;
-            }
-            dump(buffer, display_offset).append(' ');
-            for (int k = 0; k < 16; k++) {
-                if (k < chars_read) {
-                    dump(buffer, data[k + j]);
-                } else {
-                    buffer.append("  ");
-                }
-                buffer.append(' ');
-            }
-            for (int k = 0; k < chars_read; k++) {
-                if (data[k + j] >= ' ' && data[k + j] < 127) {
-                    buffer.append((char) data[k + j]);
-                } else {
-                    buffer.append('.');
-                }
-            }
-            buffer.append(System.lineSeparator());
-            appendable.append(buffer);
-            buffer.setLength(0);
-            display_offset += chars_read;
-        }
+                        final Appendable appendable, final int index,
+                        final int length)
+        throws IOException, ArrayIndexOutOfBoundsException {
+    Objects.requireNonNull(appendable, "appendable");
+    if (index < 0 || index >= data.length) {
+        throw new ArrayIndexOutOfBoundsException(
+                "illegal index: " + index + " into array of length "
+                + data.length);
     }
+    long display_offset = offset + index;
+    final StringBuilder buffer = new StringBuilder(74);
+
+    // TODO Use Objects.checkFromIndexSize(index, length, data.length) when upgrading to JDK9
+    if (length < 0 || index + length > data.length) {
+        throw new ArrayIndexOutOfBoundsException(String.format(
+                "Range [%s, %<s + %s) out of bounds for length %s",
+                index, length, data.length));
+    }
+
+    final int endIndex = index + length;
+
+    for (int j = index; j < endIndex; j += 16) {
+        final int chars_read = Math.min(endIndex - j, 16);
+
+        dump(buffer, display_offset).append(' ');
+        for (int k = 0; k < chars_read; k++) {
+            dump(buffer, data[k + j]);
+            buffer.append(' ');
+        }
+        for (int k = chars_read; k < 16; k++) {
+            buffer.append("   ");
+        }
+        for (int k = 0; k < chars_read; k++) {
+            buffer.append(data[k + j] >= ' ' && data[k + j] < 127
+                    ? (char) data[k + j]
+                    : '.');
+        }
+        buffer.append(System.lineSeparator());
+        appendable.append(buffer);
+        buffer.setLength(0);
+        display_offset += chars_read;
+    }
+}
 
     /**
      * Dumps an array of bytes to an OutputStream. The output is formatted

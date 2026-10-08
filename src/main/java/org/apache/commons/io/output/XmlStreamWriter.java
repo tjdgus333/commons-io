@@ -220,51 +220,56 @@ public class XmlStreamWriter extends Writer {
      * @throws IOException Thrown if an error occurs detecting the encoding.
      */
     private void detectEncoding(final char[] cbuf, final int off, final int len)
-            throws IOException {
-        int size = len;
-        final StringBuffer xmlProlog = prologWriter.getBuffer();
-        if (xmlProlog.length() + len > BUFFER_SIZE) {
-            size = BUFFER_SIZE - xmlProlog.length();
-        }
-        prologWriter.write(cbuf, off, size);
+        throws IOException {
+    int size = len;
+    final StringBuffer xmlProlog = prologWriter.getBuffer();
+    if (xmlProlog.length() + len > BUFFER_SIZE) {
+        size = BUFFER_SIZE - xmlProlog.length();
+    }
+    prologWriter.write(cbuf, off, size);
 
-        // try to determine encoding
-        if (xmlProlog.length() >= 5) {
-            if (xmlProlog.substring(0, 5).equals("<?xml")) {
-                // try to extract encoding from XML prolog
-                final int xmlPrologEnd = xmlProlog.indexOf("?>");
-                if (xmlPrologEnd > 0) {
-                    // ok, full XML prolog written: let's extract encoding
-                    final Matcher m = XmlStreamReader.ENCODING_PATTERN.matcher(xmlProlog.substring(0,
-                            xmlPrologEnd));
-                    if (m.find()) {
-                        final String encName = m.group(1).toUpperCase(Locale.ROOT);
-                        charset = Charset.forName(encName.substring(1, encName.length() - 1));
-                    } else {
-                        // no encoding found in XML prolog: using default
-                        // encoding
-                        charset = defaultCharset;
-                    }
-                } else if (xmlProlog.length() >= BUFFER_SIZE) {
-                    // no encoding found in first characters: using default
-                    // encoding
-                    charset = defaultCharset;
-                }
+    // try to determine encoding
+    if (xmlProlog.length() < 5) {
+        return;
+    }
+
+    if (!xmlProlog.substring(0, 5).equals("<?xml")) {
+        // no XML prolog: using default encoding
+        charset = defaultCharset;
+    } else {
+        // try to extract encoding from XML prolog
+        final int xmlPrologEnd = xmlProlog.indexOf("?>");
+        if (xmlPrologEnd > 0) {
+            // ok, full XML prolog written: let's extract encoding
+            final Matcher m = XmlStreamReader.ENCODING_PATTERN.matcher(
+                    xmlProlog.substring(0, xmlPrologEnd));
+            if (m.find()) {
+                final String encName = m.group(1).toUpperCase(Locale.ROOT);
+                charset = Charset.forName(encName.substring(1, encName.length() - 1));
             } else {
-                // no XML prolog: using default encoding
+                // no encoding found in XML prolog: using default
+                // encoding
                 charset = defaultCharset;
             }
-            if (charset != null) {
-                // encoding has been chosen: let's do it
-                prologWriter = null;
-                writer = new OutputStreamWriter(out, charset);
-                writer.write(xmlProlog.toString());
-                if (len > size) {
-                    writer.write(cbuf, off + size, len - size);
-                }
-            }
+        } else if (xmlProlog.length() >= BUFFER_SIZE) {
+            // no encoding found in first characters: using default
+            // encoding
+            charset = defaultCharset;
         }
     }
+
+    if (charset == null) {
+        return;
+    }
+
+    // encoding has been chosen: let's do it
+    prologWriter = null;
+    writer = new OutputStreamWriter(out, charset);
+    writer.write(xmlProlog.toString());
+    if (len > size) {
+        writer.write(cbuf, off + size, len - size);
+    }
+}
 
     /**
      * Flushes the underlying writer.
